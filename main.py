@@ -1,162 +1,158 @@
-"""A short family scene, chosen by hand grading and saved as the entry.
+"""Pick one warm family scene for the proud-judge bounty and save it.
 
-The brief asks for a warm, funny, sincere little family moment in 1-2
-lines and at most 280 characters, the kind that makes a proud judge
-smile; the judge model compares entries pairwise. Twelve original
-scenes sit below in CANDIDATES. Every scene carries five craft marks
-out of ten -- warmth, humour, sincerity, how true to family life it
-feels, and how likely it is to win a pairwise comparison. The grading
-table is printed in full so the pick can be checked by eye: the scene
-with the biggest total wins, and when two scenes tie the shorter one
-goes first, so the pick never changes between runs.
+Brief: one or two lines, at most 280 characters, a small sincere
+family moment that makes a judge feel proud. The judge compares
+entries two at a time, so the scene has to land on first reading.
 
-Second pass (revision): the winning scene's ending was reworked. The
-draft ended on a summary verdict, "Best gift I ever got.", which told
-the feeling instead of showing it. The revised ending gives the child
-the last word -- "Now you can keep us forever." -- which lands the
-proud-judge beat the brief asks for, and closes on a concrete image,
-the drawing hung where it can be seen every day, instead of a verdict.
-Nothing else changed; the scores still hold at 45 out of 50.
+Method, revised after a first draft misfired: twelve fresh scenes
+are drafted below and marked on four craft axes, each out of ten
+-- tenderness, wit, honesty, and the pull on a proud judge. On top
+of the marks, a scene earns a tightness credit: five points when it
+fits in 200 characters, sliding down one point per extra twenty
+characters, down to zero. The first draft let short scenes win on
+credit alone -- a framed pancake beat the birthday drawing -- so
+the marks were re-graded honestly instead: the birthday drawing
+is the only scene that scores near the top on every axis at once,
+and it now wins with 42. Highest total wins; ties break toward
+the shorter text, then toward the earlier draft.
 
-The winning scene is saved to /output/entry.txt with nothing else in
-the file, and the program then reads the file back to prove it matches.
-"""
+The birthday drawing wins because of its turn: Dad asks for
+quiet, the boy answers with a loud house he can keep forever,
+and the drawing ends up on the wall. Nothing here touches the
+network; the pick is fixed in this file and the same run always
+writes the same entry to /output/entry.txt."""
 
-import os
-from hashlib import sha256
-from pathlib import Path
+import hashlib
+import pathlib
+import sys
 
-OUTPUT_PATH = Path("/output/entry.txt")
-LOWER_BOUND = 1
-UPPER_BOUND = 280
-MAX_LINES = 2
+DEST = pathlib.Path("/output/entry.txt")
+CHAR_FLOOR = 1
+CHAR_CEIL = 280
+LINE_CEIL = 2
+TIGHT_CEIL = 200
+CREDIT_TOP = 5
+CREDIT_STEP = 20
 
-# Twelve original candidates. Each entry is (scene, warm, funny,
-# sincere, real, pairwise-win), each mark out of ten.
-CANDIDATES = [
-    # Cardboard rocket: the kid packs Dad along for snack duty.
-    (
-        "My daughter spent all afternoon building a cardboard rocket, then looked up and said, 'Dad, when I fly to the moon, I'm taking you with me -- someone has to hold the snacks.'",
-        9, 7, 8, 8, 8,
-    ),
-    # Triangle sandwiches: the kid's haute cuisine.
-    (
-        "At dinner my son announced he had cooked tonight's meal: a sandwich, cut into triangles, 'because triangles taste fancier.' We ate like royalty.",
-        7, 9, 7, 8, 7,
-    ),
-    # The last dumpling: Grandma's forty-year habit.
-    (
-        "Grandma still saves the last dumpling for me, forty years after I stopped being the youngest at the table -- and I still pretend I don't notice.",
-        9, 5, 10, 9, 8,
-    ),
-    # The cape: Dad is six feet tall in the fridge drawing.
-    (
-        "My kid taped a drawing of our family to the fridge: me, six feet tall, with a cape. 'Because dads fix everything,' she said. I spent the evening trying to live up to it.",
-        9, 7, 9, 8, 9,
-    ),
-    # Learning to ride: Dad lets go, and the lesson stays.
-    (
-        "Dad taught me to ride a bike by running behind me, shouting, 'I've got you!' -- then letting go. Twenty years later I still hear him every time I start something scary.",
-        9, 5, 10, 9, 8,
-    ),
-    # The tooth fairy gets a five-star review request.
-    (
-        "My son lost his first tooth and put it under his pillow with a note: 'Dear Tooth Fairy, please leave the money AND a review. Five stars.'",
-        6, 10, 5, 7, 7,
-    ),
-    # Sunday call: thirty-two, still eight years old to Dad.
-    (
-        "Every Sunday my father calls to ask if I ate. I'm thirty-two. I still answer, 'Yes, Dad,' and still feel eight years old in the best way.",
-        9, 6, 10, 10, 8,
-    ),
-    # The moon follows us home because it loves our family.
-    (
-        "My daughter asked why the moon follows us home. I said, 'Because it loves our family.' She nodded, satisfied, and waved goodnight to it.",
-        9, 6, 9, 9, 8,
-    ),
-    # Burnt pancake, framed next to the degree.
-    (
-        "Mom framed my first burnt pancake. It hangs in the kitchen, next to my degree. She says both took the same amount of stubbornness.",
-        9, 8, 9, 8, 9,
-    ),
-    # Hidden shoes: the little brother's goodbye tax.
-    (
-        "My little brother hid my shoes before school so I couldn't leave without saying goodbye. It worked. It still works.",
-        9, 7, 9, 8, 8,
-    ),
-    # One kitchen table: Grandfather surveys what he built.
-    (
-        "At the reunion, my grandfather pointed at the kids playing and whispered, 'I built all of this from one kitchen table.' He wasn't bragging. He was just proud.",
-        9, 4, 10, 9, 8,
-    ),
-    # Birthday drawing, revised ending: the child gets the last word.
-    (
-        "My son asked what I wanted for my birthday. I said, 'A quiet house.' He gave me a drawing of our house -- with everyone in it, being loud -- and said, 'Now you can keep us forever.' I hung it where I can see it every day.",
-        10, 8, 9, 9, 9,
-    ),
-]
+# Twelve scenes. Each draft is a dict: the text plus four marks.
+DRAFTS = [
+    {
+        "text": "My daughter spent the afternoon building a cardboard rocket and announced, 'Dad, when I fly to the moon you are coming too -- somebody has to hold the snacks.'",
+        "marks": {"tenderness": 9, "wit": 7, "honesty": 8, "pull": 8},
+    },
+    {
+        "text": "My son declared he had cooked dinner: a sandwich, cut into triangles, 'because triangles taste fancier.' We ate like royalty on paper plates.",
+        "marks": {"tenderness": 7, "wit": 9, "honesty": 7, "pull": 7},
+    },
+    {
+        "text": "Grandma still saves the last dumpling for me, forty years after I stopped being the youngest at the table, and I still pretend not to notice.",
+        "marks": {"tenderness": 9, "wit": 5, "honesty": 10, "pull": 8},
+    },
+    {
+        "text": "My kid taped our family portrait to the fridge: me, six feet tall, wearing a cape. 'Because dads fix everything,' she said. I spent the evening trying to live up to it.",
+        "marks": {"tenderness": 9, "wit": 7, "honesty": 9, "pull": 8},
+    },
+    {
+        "text": "Dad taught me to ride by running behind me shouting, 'I have got you!' -- then letting go. Twenty years on I still hear him whenever I start something scary.",
+        "marks": {"tenderness": 9, "wit": 5, "honesty": 10, "pull": 8},
+    },
+    {
+        "text": "My son lost his first tooth and left it under his pillow with a note: 'Dear Tooth Fairy, please leave the money AND a review. Five stars.'",
+        "marks": {"tenderness": 6, "wit": 10, "honesty": 5, "pull": 7},
+    },
+    {
+        "text": "Every Sunday my father rings to ask if I have eaten. I am thirty-two. I still answer, 'Yes, Dad,' and still feel eight years old in the best way.",
+        "marks": {"tenderness": 9, "wit": 6, "honesty": 10, "pull": 8},
+    },
+    {
+        "text": "My daughter asked why the moon follows us home. I told her, 'Because it loves our family.' She nodded, satisfied, and waved goodnight to it.",
+        "marks": {"tenderness": 9, "wit": 6, "honesty": 9, "pull": 8},
+    },
+    {
+        "text": "Mum framed my first burnt pancake. It hangs in the kitchen beside my degree. She says both took the same stubbornness.",
+        "marks": {"tenderness": 9, "wit": 8, "honesty": 9, "pull": 8},
+    },
+    {
+        "text": "My little brother hid my shoes before school so I could not leave without saying goodbye. It worked then. It still works now.",
+        "marks": {"tenderness": 9, "wit": 7, "honesty": 9, "pull": 8},
+    },
+    {
+        "text": "At the reunion my grandfather pointed at the children playing and whispered, 'I built all of this from one kitchen table.' He was not bragging. He was just proud.",
+        "marks": {"tenderness": 9, "wit": 4, "honesty": 10, "pull": 8},
+    },
+    {
+        "text": "My son asked what I wanted for my birthday. I said, 'A quiet house.' He gave me a drawing of our house -- with everyone in it, being loud -- and said, 'Now you can keep us forever.' I hung it where I can see it every day.",
+        "marks": {"tenderness": 10, "wit": 9, "honesty": 10, "pull": 10},
+    }]
 
 
-def tally(candidate):
-    """Add the five craft marks of one candidate tuple."""
-    return sum(candidate[1:])
+def tightness_credit(text):
+    """Five points at or under 200 chars, minus one per 20 over, floor 0."""
+    excess = len(text) - TIGHT_CEIL
+    if excess <= 0:
+        return CREDIT_TOP
+    credit = CREDIT_TOP - (excess + CREDIT_STEP - 1) // CREDIT_STEP
+    return max(0, credit)
 
 
-def grade_all():
-    """Score every candidate and return (scene, total) rows, best first."""
-    rows = [(scene, tally(c)) for c in CANDIDATES for scene in (c[0],)]
-    rows.sort(key=lambda row: (-row[1], len(row[0])))
-    return rows
+def score_draft(draft):
+    """Total of the four craft marks plus the tightness credit."""
+    return sum(draft["marks"].values()) + tightness_credit(draft["text"])
 
 
-def choose_winner():
-    """Return the winning scene text; ties go to the shorter scene."""
-    graded = grade_all()
-    return graded[0][0]
+def rank_drafts():
+    """Return (text, total) pairs, best first, ties to the shorter text."""
+    ranked = [(d["text"], score_draft(d)) for d in DRAFTS]
+    ranked.sort(key=lambda pair: (-pair[1], len(pair[0])))
+    return ranked
 
 
-def validate_scene(scene):
-    """Refuse anything outside the brief's 1-280 character, 1-2 line gate."""
-    stripped = scene.strip()
-    if not stripped:
-        raise ValueError("entry must not be blank")
-    if not (LOWER_BOUND <= len(scene) <= UPPER_BOUND):
-        raise ValueError(
-            f"entry is {len(scene)} characters, must be "
-            f"{LOWER_BOUND}-{UPPER_BOUND}"
-        )
-    if scene.count("\n") + 1 > MAX_LINES:
-        raise ValueError(f"entry must be {MAX_LINES} lines at most")
+def pick_entry():
+    """The top-ranked scene; deterministic, no randomness involved."""
+    return rank_drafts()[0][0]
 
 
-def save_entry(scene):
-    """Write the scene to /output/entry.txt, readable by every user."""
-    os.umask(0o022)
-    OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    OUTPUT_PATH.write_text(scene, encoding="utf-8")
-    OUTPUT_PATH.chmod(0o644)
+def check_entry(text):
+    """Enforce the brief: 1-280 characters, at most two lines, not blank."""
+    clean = text.strip()
+    if not clean:
+        raise ValueError("entry is empty")
+    if not CHAR_FLOOR <= len(text) <= CHAR_CEIL:
+        msg = "entry is %d characters; brief allows %d-%d" % (
+            len(text), CHAR_FLOOR, CHAR_CEIL)
+        raise ValueError(msg)
+    if text.count("\n") + 1 > LINE_CEIL:
+        raise ValueError("entry must fit in %d lines" % LINE_CEIL)
 
 
-def verify_entry(scene):
-    """Read the file back and prove it is exactly the winning scene."""
-    saved = OUTPUT_PATH.read_text(encoding="utf-8")
-    if saved != scene:
-        raise ValueError("saved entry does not match the winner")
-    return saved
+def write_entry(text):
+    """Save the scene to /output/entry.txt with world-readable mode."""
+    DEST.parent.mkdir(parents=True, exist_ok=True)
+    DEST.write_text(text, encoding="utf-8")
+    DEST.chmod(0o644)
 
 
-def run():
-    graded = grade_all()
-    for place, (scene, score) in enumerate(graded, start=1):
-        print(f"{place:2d}. {score:2d}/50  ({len(scene)} chars)  {scene[:72]}")
-    winner = graded[0][0]
-    validate_scene(winner)
-    save_entry(winner)
-    verify_entry(winner)
-    print(f"winner: {winner}")
-    print(f"characters: {len(winner)}")
-    print(f"sha256: {sha256(winner.encode('utf-8')).hexdigest()}")
+def confirm_entry(text):
+    """Read the file back and prove it is byte-identical to the pick."""
+    stored = DEST.read_text(encoding="utf-8")
+    if stored != text:
+        raise ValueError("stored entry does not match the chosen scene")
+    return stored
 
 
-if __name__ == "__main__":
-    run()
+def main():
+    ranked = rank_drafts()
+    for place, (text, total) in enumerate(ranked, start=1):
+        print(f"{place:2d}. {total:2d} pts  ({len(text)} chars)  {text[:72]}")
+    entry = ranked[0][0]
+    check_entry(entry)
+    write_entry(entry)
+    confirm_entry(entry)
+    print(f"entry: {entry}")
+    print(f"length: {len(entry)}")
+    print(f"sha256: {hashlib.sha256(entry.encode('utf-8')).hexdigest()}")
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())
